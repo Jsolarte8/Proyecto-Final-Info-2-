@@ -9,6 +9,7 @@ SOURCES += \
         FisicaFriccion.cpp \
         FisicaParabolica.cpp \
         Jugador.cpp \
+        Jugador.cpp \
         main.cpp
 
 HEADERS += \
@@ -16,4 +17,5 @@ HEADERS += \
     FisicaElastica.h \
     FisicaFriccion.h \
     FisicaParabolica.h \
+    Jugador.h \
     Jugador.h

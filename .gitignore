@@ -1,0 +1,23 @@
+# Qt Creator
+*.pro.user
+*.pro.user.*
+.qtc_creator/
+
+# Build
+build/
+build-*/
+
+# Cache
+.qtc_clangd/
+*.idx
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.a
+
+# System
+.DS_Store
+Thumbs.db
