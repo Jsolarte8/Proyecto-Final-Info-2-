@@ -12,10 +12,14 @@
 #include <QPixmapCache>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSoundEffect>
 #include <QTimer>
 #include <QTransform>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QtMath>
+
+#include <stdexcept>
 
 static QPushButton* createGameButton(const QString& text)
 {
@@ -144,7 +148,9 @@ FinalBattleScreen::FinalBattleScreen(QWidget* parent)
       statusLabel(new QLabel(this)),
       cooldownLabel(new QLabel(this)),
       updateTimer(new QTimer(this)),
-      spiderTimer(new QTimer(this))
+      spiderTimer(new QTimer(this)),
+      hitSound(new QSoundEffect(this)),
+      spiderSound(new QSoundEffect(this))
 {
     setFocusPolicy(Qt::StrongFocus);
     setStyleSheet(
@@ -218,6 +224,11 @@ FinalBattleScreen::FinalBattleScreen(QWidget* parent)
     });
     connect(updateTimer, &QTimer::timeout, this, &FinalBattleScreen::updateBattle);
     connect(spiderTimer, &QTimer::timeout, this, &FinalBattleScreen::spiderAttack);
+
+    hitSound->setSource(QUrl("qrc:/assets/sfx_golpe.wav"));
+    hitSound->setVolume(0.58f);
+    spiderSound->setSource(QUrl("qrc:/assets/sfx_danio.wav"));
+    spiderSound->setVolume(0.50f);
 }
 
 void FinalBattleScreen::setPlayer(Character character)
@@ -227,7 +238,14 @@ void FinalBattleScreen::setPlayer(Character character)
 
 void FinalBattleScreen::setDifficulty(int difficulty)
 {
-    this->difficulty = difficulty;
+    try {
+        if (difficulty < 0 || difficulty > 2) {
+            throw std::invalid_argument("La dificultad debe estar entre 0 y 2.");
+        }
+        this->difficulty = difficulty;
+    } catch (const std::invalid_argument&) {
+        this->difficulty = 1;
+    }
 }
 
 void FinalBattleScreen::startBattle()
@@ -422,6 +440,7 @@ void FinalBattleScreen::spiderAttack()
             statusLabel->setText(text + " impacta");
         }
         playerHealth = qMax(0, playerHealth - damage);
+        spiderSound->play();
         hitFlash = 0.18f;
     } else {
         statusLabel->setText(text + " falla");
@@ -558,6 +577,7 @@ void FinalBattleScreen::playerBasicAttack()
     if (distancia <= 230.0f) {
         const int damage = player.getStrength();
         spiderHealth = qMax(0, spiderHealth - damage);
+        hitSound->play();
         statusLabel->setText(QString("Golpe básico: %1 de daño").arg(damage));
         hitFlash = 0.12f;
     } else {
@@ -578,6 +598,7 @@ void FinalBattleScreen::playerSpecialAttack()
     if (distancia <= 340.0f) {
         const int damage = player.getStrength() * 2 + player.getPoleControl();
         spiderHealth = qMax(0, spiderHealth - damage);
+        hitSound->play();
         statusLabel->setText(QString("Ataque especial con pértiga: %1 de daño").arg(damage));
         specialCooldown = difficulty == 2 ? 4.2f : 3.4f;
         hitFlash = 0.2f;

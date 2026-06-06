@@ -27,18 +27,27 @@ std::string AraniaGuardiana::percibir(Jugador* jugador)
 
 void AraniaGuardiana::razonar()
 {
+    while (!acciones.empty()) {
+        acciones.pop();
+    }
+
+    std::string zonaMasVisitada;
+    int visitasZonaMasVisitada = 0;
     for (const auto& entrada : memoriaRutas) {
-        if (entrada.second >= 3) {
-            acciones.push("colocar_hilo:" + entrada.first);
+        if (entrada.second >= 2 && entrada.second > visitasZonaMasVisitada) {
+            zonaMasVisitada = entrada.first;
+            visitasZonaMasVisitada = entrada.second;
         }
     }
 
-    if (acciones.empty()) {
-        acciones.push("perseguir");
+    if (!zonaMasVisitada.empty()) {
+        acciones.push("colocar_hilo:" + zonaMasVisitada);
     }
+
+    acciones.push("perseguir");
 }
 
-void AraniaGuardiana::actuar(Jugador* jugador)
+std::string AraniaGuardiana::actuar(Jugador* jugador)
 {
     if (acciones.empty()) {
         razonar();
@@ -47,8 +56,13 @@ void AraniaGuardiana::actuar(Jugador* jugador)
     const std::string accion = acciones.front();
     acciones.pop();
 
-    Q_UNUSED(accion);
-    perseguir(jugador);
+    if (accion == "perseguir") {
+        perseguir(jugador);
+    } else if (accion.rfind("colocar_hilo:", 0) == 0) {
+        memoriaRutas[accion.substr(13)] = 0;
+    }
+
+    return accion;
 }
 
 void AraniaGuardiana::aprender(const std::string& zona)
@@ -59,7 +73,7 @@ void AraniaGuardiana::aprender(const std::string& zona)
 bool AraniaGuardiana::debeColocarHilo(const std::string& zona) const
 {
     const auto it = memoriaRutas.find(zona);
-    return it != memoriaRutas.end() && it->second >= 3;
+    return it != memoriaRutas.end() && it->second >= 2;
 }
 
 const std::map<std::string, int>& AraniaGuardiana::getMemoriaRutas() const
