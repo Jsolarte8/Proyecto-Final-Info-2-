@@ -14,7 +14,7 @@ public:
 
     std::string percibir(Jugador* jugador);
     void razonar();
-    void actuar(Jugador* jugador);
+    std::string actuar(Jugador* jugador);
     void aprender(const std::string& zona);
     bool debeColocarHilo(const std::string& zona) const;
 

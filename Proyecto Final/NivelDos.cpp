@@ -16,7 +16,7 @@ NivelDos::NivelDos(int dificultad, const Character& character)
       mundoAlto(900.0f),
       ataqueCooldown(0.0f),
       aprendizajeCooldown(0.0f),
-      maxHilosDinamicos(dificultad == 0 ? 3 : (dificultad == 1 ? 5 : 8))
+      maxHilosDinamicos(dificultad == 0 ? 2 : (dificultad == 1 ? 7 : 14))
 {
 }
 
@@ -41,22 +41,25 @@ void NivelDos::cargarNivel()
     jugador->setAlto(54.0f);
 
     arania = new AraniaGuardiana(1180.0f, 610.0f);
-    arania->setAgresividad(dificultad == 0 ? 0.85f : (dificultad == 1 ? 1.08f : 1.35f));
-    arania->setDanio(dificultad == 0 ? 7 : (dificultad == 1 ? 10 : 14));
+    arania->setAgresividad(dificultad == 0 ? 0.72f : (dificultad == 1 ? 1.18f : 1.72f));
+    arania->setDanio(dificultad == 0 ? 6 : (dificultad == 1 ? 12 : 18));
 
     recolectables.push_back(new Recolectable("semilla", 300.0f, 190.0f, 34.0f, 34.0f, 60));
     recolectables.push_back(new Recolectable("semilla", 840.0f, 420.0f, 34.0f, 34.0f, 60));
     recolectables.push_back(new Recolectable("semilla", 1350.0f, 240.0f, 34.0f, 34.0f, 60));
 
-    obstaculos.push_back(new Obstaculo("hilo", 470.0f, 70.0f, 28.0f, 520.0f, 0, 0.45f, false));
-    obstaculos.push_back(new Obstaculo("hilo", 730.0f, 330.0f, 520.0f, 28.0f, 0, 0.45f, false));
-    obstaculos.push_back(new Obstaculo("hilo", 1120.0f, 130.0f, 28.0f, 520.0f, 0, 0.45f, false));
+    const float frenoHilo = dificultad == 0 ? 0.58f : (dificultad == 1 ? 0.42f : 0.28f);
+
+    obstaculos.push_back(new Obstaculo("hilo", 470.0f, 70.0f, 30.0f, 520.0f, 0, frenoHilo, false));
+    obstaculos.push_back(new Obstaculo("hilo", 730.0f, 330.0f, 520.0f, 30.0f, 0, frenoHilo, false));
+    obstaculos.push_back(new Obstaculo("hilo", 1120.0f, 130.0f, 30.0f, 520.0f, 0, frenoHilo, false));
 
     if (dificultad >= 1) {
-        obstaculos.push_back(new Obstaculo("hilo", 230.0f, 620.0f, 430.0f, 28.0f, 0, 0.45f, false));
+        obstaculos.push_back(new Obstaculo("hilo", 230.0f, 620.0f, 430.0f, 30.0f, 0, frenoHilo, false));
     }
     if (dificultad == 2) {
-        obstaculos.push_back(new Obstaculo("hilo", 980.0f, 640.0f, 470.0f, 28.0f, 0, 0.45f, false));
+        obstaculos.push_back(new Obstaculo("hilo", 980.0f, 640.0f, 470.0f, 30.0f, 0, frenoHilo, false));
+        obstaculos.push_back(new Obstaculo("hilo", 250.0f, 240.0f, 30.0f, 360.0f, 0, frenoHilo, false));
     }
 }
 
@@ -76,15 +79,17 @@ void NivelDos::actualizar(float deltaTiempo)
     if (aprendizajeCooldown <= 0.0f) {
         const std::string zona = arania->percibir(jugador);
         arania->aprender(zona);
-        if (arania->debeColocarHilo(zona) && static_cast<int>(hilosDinamicos.size()) < maxHilosDinamicos) {
-            colocarHiloDinamico(zona);
-        }
-        aprendizajeCooldown = dificultad == 2 ? 0.55f : 0.8f;
+        aprendizajeCooldown = dificultad == 0 ? 1.15f : (dificultad == 1 ? 0.65f : 0.35f);
     }
 
-    arania->setAgresividad((dificultad == 0 ? 0.85f : (dificultad == 1 ? 1.08f : 1.35f))
-                           + jugador->getSemillas() * 0.22f);
-    arania->actuar(jugador);
+    arania->setAgresividad((dificultad == 0 ? 0.72f : (dificultad == 1 ? 1.18f : 1.72f))
+                           + jugador->getSemillas() * (dificultad == 2 ? 0.34f : 0.22f));
+    const std::string accionArania = arania->actuar(jugador);
+    const std::string prefijoColocarHilo = "colocar_hilo:";
+    if (accionArania.rfind(prefijoColocarHilo, 0) == 0
+        && static_cast<int>(hilosDinamicos.size()) < maxHilosDinamicos) {
+        colocarHiloDinamico(accionArania.substr(prefijoColocarHilo.size()));
+    }
     arania->actualizar(deltaTiempo);
     arania->setX(std::clamp(arania->getX(), 20.0f, mundoAncho - arania->getAncho() - 20.0f));
     arania->setY(std::clamp(arania->getY(), 20.0f, mundoAlto - arania->getAlto() - 20.0f));
@@ -125,7 +130,7 @@ void NivelDos::verificarColisiones()
 
     if (jugador->rect().intersects(arania->rect()) && ataqueCooldown <= 0.0f) {
         arania->atacar(jugador);
-        ataqueCooldown = dificultad == 2 ? 0.75f : 1.1f;
+        ataqueCooldown = dificultad == 0 ? 1.45f : (dificultad == 1 ? 1.0f : 0.58f);
     }
 }
 
@@ -143,7 +148,7 @@ void NivelDos::moverJugador(float dx, float dy)
 
     float velocidad = velocidadBase();
     if (enHilo) {
-        velocidad *= 0.45f;
+        velocidad *= dificultad == 0 ? 0.58f : (dificultad == 1 ? 0.42f : 0.28f);
     }
 
     jugador->setVelocidadX(dx * velocidad);
@@ -180,14 +185,15 @@ bool NivelDos::salidaEstaAbierta() const { return salidaAbierta; }
 
 float NivelDos::velocidadBase() const
 {
-    return 70.0f + character.getSpeed() * 8.2f;
+    const float factorDificultad = dificultad == 0 ? 1.08f : (dificultad == 1 ? 1.0f : 0.90f);
+    return (70.0f + character.getSpeed() * 8.2f) * factorDificultad;
 }
 
 void NivelDos::colocarHiloDinamico(const std::string& zona)
 {
     const QRectF rect = rectDesdeZona(zona);
     for (const QRectF& existente : hilosDinamicos) {
-        if (existente.intersects(rect.adjusted(-15, -15, 15, 15))) {
+        if (existente.intersects(rect.adjusted(-12, -12, 12, 12))) {
             return;
         }
     }
@@ -199,5 +205,10 @@ QRectF NivelDos::rectDesdeZona(const std::string& zona) const
     int zonaX = 0;
     int zonaY = 0;
     std::sscanf(zona.c_str(), "zona_%d_%d", &zonaX, &zonaY);
-    return QRectF(zonaX * 120.0 + 35.0, zonaY * 100.0 + 38.0, 96.0, 18.0);
+    const bool vertical = (zonaX + zonaY) % 3 == 0;
+    const qreal anchoHilo = vertical ? 34.0 : 170.0;
+    const qreal altoHilo = vertical ? 180.0 : 32.0;
+    const qreal x = std::clamp<qreal>(zonaX * 120.0 + 28.0, 20.0, mundoAncho - anchoHilo - 20.0);
+    const qreal y = std::clamp<qreal>(zonaY * 100.0 + 34.0, 20.0, mundoAlto - altoHilo - 20.0);
+    return QRectF(x, y, anchoHilo, altoHilo);
 }

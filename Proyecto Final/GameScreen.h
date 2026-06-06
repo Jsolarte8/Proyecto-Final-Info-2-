@@ -11,6 +11,7 @@ class QLabel;
 class QGraphicsScene;
 class QGraphicsView;
 class QProgressBar;
+class QSoundEffect;
 class QTimer;
 
 class GameScreen : public QWidget
@@ -42,6 +43,11 @@ private slots:
 
 private:
     QString playerSpritePath() const;
+    void setupAudio();
+    void startAmbientAudio();
+    void stopAmbientAudio();
+    void resetAudioTracking();
+    void updateAudioFeedback();
 
     Character character;
     int difficulty;
@@ -55,10 +61,16 @@ private:
     QLabel* collectiblesLabel;
     QProgressBar* healthBar;
     QProgressBar* poleBar;
+    QSoundEffect* ambientSound;
+    QSoundEffect* collectSound;
+    QSoundEffect* damageSound;
     QSet<int> pressedKeys;
     bool spaceCharging;
     bool impulseRequested;
     int animationTick;
+    int lastTrackedHealth;
+    int lastTrackedNectar;
+    int lastTrackedSemillas;
 };
 
 #endif

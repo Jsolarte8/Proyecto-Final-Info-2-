@@ -15,9 +15,13 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSoundEffect>
 #include <QTimer>
 #include <QTransform>
+#include <QUrl>
 #include <QVBoxLayout>
+
+#include <exception>
 
 static QPushButton* createGameButton(const QString& text)
 {
@@ -156,9 +160,15 @@ GameScreen::GameScreen(QWidget* parent)
       collectiblesLabel(new QLabel(this)),
       healthBar(new QProgressBar(this)),
       poleBar(new QProgressBar(this)),
+      ambientSound(new QSoundEffect(this)),
+      collectSound(new QSoundEffect(this)),
+      damageSound(new QSoundEffect(this)),
       spaceCharging(false),
       impulseRequested(false),
-      animationTick(0)
+      animationTick(0),
+      lastTrackedHealth(0),
+      lastTrackedNectar(0),
+      lastTrackedSemillas(0)
 {
     setFocusPolicy(Qt::StrongFocus);
     setStyleSheet(
@@ -198,6 +208,7 @@ GameScreen::GameScreen(QWidget* parent)
     auto* resetButton = createGameButton("R");
     connect(menuButton, &QPushButton::clicked, this, [this]() {
         updateTimer->stop();
+        stopAmbientAudio();
         emit returnToMenu();
     });
     connect(resetButton, &QPushButton::clicked, this, &GameScreen::resetGame);
@@ -224,10 +235,12 @@ GameScreen::GameScreen(QWidget* parent)
 
     updateTimer->setInterval(16);
     connect(updateTimer, &QTimer::timeout, this, &GameScreen::updateGame);
+    setupAudio();
 }
 
 GameScreen::~GameScreen()
 {
+    stopAmbientAudio();
     delete juego;
     juego = nullptr;
 }
@@ -241,8 +254,13 @@ void GameScreen::setCharacter(Character character)
 
 void GameScreen::setDifficulty(int difficulty)
 {
-    this->difficulty = difficulty;
-    juego->setDifficulty(difficulty);
+    try {
+        juego->setDifficulty(difficulty);
+        this->difficulty = difficulty;
+    } catch (const std::exception&) {
+        this->difficulty = 1;
+        juego->setDifficulty(1);
+    }
 }
 
 void GameScreen::startGame()
@@ -254,6 +272,8 @@ void GameScreen::startGame()
     juego->setCharacter(character);
     juego->setDifficulty(difficulty);
     juego->iniciar();
+    resetAudioTracking();
+    startAmbientAudio();
     buildLevelScene();
     updateHUD();
     updateTimer->start();
@@ -266,6 +286,8 @@ void GameScreen::resetGame()
     spaceCharging = false;
     impulseRequested = false;
     juego->reiniciarNivel();
+    resetAudioTracking();
+    startAmbientAudio();
     buildLevelScene();
     updateHUD();
     updateTimer->start();
@@ -319,23 +341,46 @@ void GameScreen::buildLevelScene()
             continue;
         }
 
-        const bool esHilo = obstaculo->getTipo() == "hilo";
+        const QRectF rect = obstaculo->rect();
+        const QString tipo = obstaculo->getTipo();
+        const bool esHilo = tipo == "hilo";
         const QString resource = esHilo
                                      ? (obstaculo->getAlto() > obstaculo->getAncho() ? ":/assets/hilo_vertical.png" : ":/assets/hilo.png")
-                                     : obstacleResource(obstaculo->getTipo());
-        const QPixmap pixmap = esHilo
-                                   ? makeFilledGamePixmap(resource, obstaculo->rect().size().toSize(), obstacleColor(obstaculo->getTipo()), obstaculo->getTipo())
-                                   : makeGamePixmap(resource, obstaculo->rect().size().toSize(), obstacleColor(obstaculo->getTipo()), obstaculo->getTipo());
+                                     : obstacleResource(tipo);
 
-        if (esHilo) {
-            auto* webZone = scene->addRect(obstaculo->rect(),
-                                           QPen(QColor(224, 246, 255, 180), 2),
-                                           QBrush(QColor(220, 242, 255, 55)));
-            webZone->setZValue(1);
+        QSize visualSize = rect.size().toSize();
+        QPointF visualPos = rect.topLeft();
+        if (!esHilo) {
+            if (tipo == "charco") {
+                visualSize = QSize(static_cast<int>(rect.width() * 1.12), static_cast<int>(rect.height() * 2.2));
+                visualPos = QPointF(rect.center().x() - visualSize.width() / 2.0, rect.bottom() - visualSize.height() + 7.0);
+
+                auto* brillo = scene->addEllipse(rect.adjusted(-18, -18, 18, 12),
+                                                 QPen(QColor(94, 225, 255, 175), 2),
+                                                 QBrush(QColor(57, 164, 239, 62)));
+                brillo->setZValue(0.2);
+            } else if (tipo == "piedra" || tipo == "raiz" || tipo == "gota") {
+                visualSize = QSize(static_cast<int>(rect.width() * 1.18), static_cast<int>(rect.height() * 1.18));
+                visualPos = QPointF(rect.center().x() - visualSize.width() / 2.0, rect.center().y() - visualSize.height() / 2.0);
+
+                if (tipo != "gota") {
+                    auto* sombra = scene->addEllipse(QRectF(rect.left() - 6.0,
+                                                            rect.bottom() - 10.0,
+                                                            rect.width() + 12.0,
+                                                            18.0),
+                                                     Qt::NoPen,
+                                                     QBrush(QColor(9, 21, 15, 110)));
+                    sombra->setZValue(0.25);
+                }
+            }
         }
 
+        const QPixmap pixmap = esHilo || tipo == "charco"
+                                   ? makeFilledGamePixmap(resource, visualSize, obstacleColor(tipo), tipo)
+                                   : makeGamePixmap(resource, visualSize, obstacleColor(tipo), tipo);
+
         auto* item = scene->addPixmap(pixmap);
-        item->setPos(obstaculo->getX(), obstaculo->getY());
+        item->setPos(visualPos);
         item->setZValue(esHilo ? 2 : 1);
     }
 
@@ -352,22 +397,28 @@ void GameScreen::buildLevelScene()
     }
 
     if (auto* nivel1 = dynamic_cast<NivelUno*>(nivel)) {
-        auto* meta = scene->addPixmap(makeGamePixmap(":/assets/meta.png",
-                                                     nivel1->getMetaRect().size().toSize(),
-                                                     QColor("#6ecc80"),
-                                                     "META"));
-        meta->setPos(nivel1->getMetaRect().topLeft());
+        auto* baseMeta = scene->addEllipse(QRectF(nivel1->getMetaRect().left() + 10.0,
+                                                  nivel1->getSueloY() - 8.0,
+                                                  nivel1->getMetaRect().width() - 16.0,
+                                                  18.0),
+                                           Qt::NoPen,
+                                           QBrush(QColor(12, 40, 24, 135)));
+        baseMeta->setZValue(4);
+
+        const QPixmap metaPixmap = makeGamePixmap(":/assets/meta.png",
+                                                  QSize(124, 150),
+                                                  QColor("#6ecc80"),
+                                                  "META");
+        auto* meta = scene->addPixmap(metaPixmap);
+        meta->setPos(nivel1->getMetaRect().left(),
+                     nivel1->getSueloY() - metaPixmap.height() + 8.0);
         meta->setZValue(5);
     }
 
     if (auto* nivel2 = dynamic_cast<NivelDos*>(nivel)) {
         for (const QRectF& hilo : nivel2->getHilosDinamicos()) {
-            auto* webZone = scene->addRect(hilo,
-                                           QPen(QColor(255, 255, 255, 210), 2),
-                                           QBrush(QColor(205, 235, 255, 80)));
-            webZone->setZValue(2);
-
-            auto* item = scene->addPixmap(makeFilledGamePixmap(":/assets/hilo.png",
+            const QString hiloSprite = hilo.height() > hilo.width() ? ":/assets/hilo_vertical.png" : ":/assets/hilo.png";
+            auto* item = scene->addPixmap(makeFilledGamePixmap(hiloSprite,
                                                                hilo.size().toSize(),
                                                                QColor("#dcefed"),
                                                                "hilo"));
@@ -420,6 +471,71 @@ void GameScreen::buildLevelScene()
 
     view->centerOn(jugador->getX() + jugador->getAncho() / 2.0f, jugador->getY() + jugador->getAlto() / 2.0f);
 }
+
+void GameScreen::setupAudio()
+{
+    ambientSound->setSource(QUrl("qrc:/assets/ambiente_jardin.wav"));
+    ambientSound->setLoopCount(QSoundEffect::Infinite);
+    ambientSound->setVolume(0.16f);
+
+    collectSound->setSource(QUrl("qrc:/assets/sfx_recolectar.wav"));
+    collectSound->setLoopCount(1);
+    collectSound->setVolume(0.55f);
+
+    damageSound->setSource(QUrl("qrc:/assets/sfx_danio.wav"));
+    damageSound->setLoopCount(1);
+    damageSound->setVolume(0.55f);
+}
+
+void GameScreen::startAmbientAudio()
+{
+    if (!ambientSound->isPlaying()) {
+        ambientSound->play();
+    }
+}
+
+void GameScreen::stopAmbientAudio()
+{
+    if (ambientSound->isPlaying()) {
+        ambientSound->stop();
+    }
+}
+
+void GameScreen::resetAudioTracking()
+{
+    Jugador* jugador = juego->getJugador();
+    if (!jugador) {
+        lastTrackedHealth = 0;
+        lastTrackedNectar = 0;
+        lastTrackedSemillas = 0;
+        return;
+    }
+
+    lastTrackedHealth = jugador->getVidas();
+    lastTrackedNectar = jugador->getNectar();
+    lastTrackedSemillas = jugador->getSemillas();
+}
+
+void GameScreen::updateAudioFeedback()
+{
+    Jugador* jugador = juego->getJugador();
+    if (!jugador) {
+        return;
+    }
+
+    if (jugador->getNectar() > lastTrackedNectar || jugador->getSemillas() > lastTrackedSemillas) {
+        collectSound->play();
+    }
+
+    if (jugador->getVidas() < lastTrackedHealth) {
+        damageSound->play();
+    }
+
+    lastTrackedHealth = jugador->getVidas();
+    lastTrackedNectar = jugador->getNectar();
+    lastTrackedSemillas = jugador->getSemillas();
+}
+
 void GameScreen::updateHUD()
 {
     Nivel* nivel = juego->getNivelActual();
@@ -454,6 +570,7 @@ void GameScreen::keyPressEvent(QKeyEvent* event)
 
     if (event->key() == Qt::Key_Escape) {
         updateTimer->stop();
+        stopAmbientAudio();
         emit returnToMenu();
         return;
     }
@@ -504,7 +621,7 @@ void GameScreen::updateGame()
                      - (pressedKeys.contains(Qt::Key_W) ? 1.0f : 0.0f);
 
     if (juego->getNumeroNivel() == 1) {
-        juego->moverJugador(dx, 0.0f);
+        juego->moverJugador(spaceCharging ? 0.0f : dx, 0.0f);
         if (spaceCharging) {
             juego->cargarPertiga(delta);
         }
@@ -517,6 +634,7 @@ void GameScreen::updateGame()
     }
 
     juego->actualizar(delta);
+    updateAudioFeedback();
     updateHUD();
 
     Nivel* nivel = juego->getNivelActual();
@@ -529,18 +647,21 @@ void GameScreen::updateGame()
             juego->cambiarNivel();
             pressedKeys.clear();
             spaceCharging = false;
+            resetAudioTracking();
             buildLevelScene();
             updateHUD();
             return;
         }
 
         updateTimer->stop();
+        stopAmbientAudio();
         emit levelTwoFinished();
         return;
     }
 
     if (nivel->getEstado() == EstadoNivel::Perdido) {
         updateTimer->stop();
+        stopAmbientAudio();
         emit gameLost();
         return;
     }

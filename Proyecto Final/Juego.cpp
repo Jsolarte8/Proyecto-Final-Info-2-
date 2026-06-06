@@ -2,6 +2,8 @@
 #include "NivelDos.h"
 #include "NivelUno.h"
 
+#include <stdexcept>
+
 Juego::Juego()
     : nivelActual(nullptr),
       numeroNivel(1),
@@ -26,6 +28,10 @@ void Juego::setCharacter(const Character& character)
 
 void Juego::setDifficulty(int difficulty)
 {
+    if (difficulty < 0 || difficulty > 2) {
+        throw std::invalid_argument("La dificultad debe estar entre 0 y 2.");
+    }
+
     dificultad = difficulty;
 }
 

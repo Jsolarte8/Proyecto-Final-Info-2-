@@ -11,6 +11,7 @@ class QLabel;
 class QGraphicsScene;
 class QGraphicsView;
 class QProgressBar;
+class QSoundEffect;
 class QTimer;
 
 class FinalBattleScreen : public QWidget
@@ -75,6 +76,8 @@ private:
     QLabel* cooldownLabel;
     QTimer* updateTimer;
     QTimer* spiderTimer;
+    QSoundEffect* hitSound;
+    QSoundEffect* spiderSound;
     QSet<int> pressedKeys;
 };
 

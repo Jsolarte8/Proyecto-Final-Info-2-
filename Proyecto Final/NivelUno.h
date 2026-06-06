@@ -3,6 +3,7 @@
 
 #include "FisicaElastica.h"
 #include "FisicaFriccion.h"
+#include "FisicaParabolica.h"
 #include "Nivel.h"
 #include "Temporizador.h"
 
@@ -32,6 +33,7 @@ private:
     float velocidadHorizontalBase() const;
 
     Temporizador temporizador;
+    FisicaParabolica fisicaParabolica;
     FisicaElastica fisicaElastica;
     FisicaFriccion fisicaFriccion;
     QRectF meta;
